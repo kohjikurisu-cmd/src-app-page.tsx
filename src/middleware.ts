@@ -8,7 +8,8 @@ export function middleware(req: NextRequest) {
     const authValue = basicAuth.split(' ')[1];
     const [user, pwd] = atob(authValue).split(':');
 
-    // 👇 ユーザー名「admin」、パスワード「team2026」にする場合の設定です。自由に変更してください！
+    // 👇 ユーザー名「admin」、パスワード「team2026」に設定しています。
+    // 必要に応じてお好きな文字に書き換えてください。
     if (user === 'admin' && pwd === 'team2026') {
       return NextResponse.next();
     }
@@ -22,7 +23,7 @@ export function middleware(req: NextRequest) {
   });
 }
 
-// サイト全体（すべてのページ）にBasic認証を適用する設定
+// サイト全体にBasic認証を適用する設定
 export const config = {
   matcher: '/:path*',
 };
