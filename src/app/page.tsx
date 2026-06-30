@@ -21,9 +21,11 @@ export default function Home() {
   const [zipUrl, setZipUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // ⭕ ドラッグ中の挙動を一本化し、ブラウザの標準動作を確実にストップさせます
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    
     if (e.type === "dragenter" || e.type === "dragover") {
       setIsDragActive(true);
     } else if (e.type === "dragleave") {
@@ -31,13 +33,23 @@ export default function Home() {
     }
   };
 
+  // ⭕ フォルダがドロップされたときの処理
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragActive(false);
 
+    console.log("💥 ドロップイベントを検知しました！");
+
     const items = e.dataTransfer.items;
-    if (!items || !BUCKET_NAME) return;
+    if (!items) {
+      console.log("❌ ドロップされたアイテム（データ転送）がありません。");
+      return;
+    }
+    if (!BUCKET_NAME) {
+      setStatusMessage('❌ AWSバケット名の環境変数が設定されていません。');
+      return;
+    }
 
     setStatusMessage('📁 フォルダ構造をスキャン中...');
     const files: File[] = [];
@@ -60,15 +72,22 @@ export default function Home() {
       }
     };
 
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i].webkitGetAsEntry();
-      if (item) await traverseFileTree(item);
-    }
+    try {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i].webkitGetAsEntry();
+        if (item) await traverseFileTree(item);
+      }
 
-    if (files.length > 0) {
-      uploadFilesToS3(files);
-    } else {
-      setStatusMessage('❌ 有効な画像ファイルが見つかりませんでした。');
+      console.log(`📸 スキャン完了。画像ファイル数: ${files.length}個`);
+
+      if (files.length > 0) {
+        uploadFilesToS3(files);
+      } else {
+        setStatusMessage('❌ 有効な画像ファイルが見つかりませんでした。フォルダの中に画像（JPG/PNG等）があるか確認してください。');
+      }
+    } catch (err) {
+      console.error("フォルダスキャンエラー:", err);
+      setStatusMessage('❌ フォルダの読み込み中にエラーが発生しました。');
     }
   };
 
@@ -115,20 +134,17 @@ export default function Home() {
         );
       }
 
-      // 🌟 ①のために、テキストファイルの中身に「総写真ファイル数（例: 15）」を書き込んでシグナル送信
       setStatusMessage('🔔 仕分け完了同期シグナルを送信中...');
       const signalKey = `uploads/${targetFolderName}generate_zip.txt`;
       const signalCommand = new PutObjectCommand({
         Bucket: BUCKET_NAME,
         Key: signalKey,
-        Body: String(totalFiles), // ファイル数をプレーンテキストで流し込む
+        Body: String(totalFiles),
         ContentType: 'text/plain',
       });
       await s3Client.send(signalCommand);
 
       setUploadProgress(null);
-      
-      // ④ のために偵察処理（ポーリング）を開始
       startPollingForZip();
 
     } catch (error) {
@@ -138,11 +154,10 @@ export default function Home() {
     }
   };
 
-  // 🕵️‍♂️ ④ 作成されたzipファイルを自動検知して安全にダウンロードリンク化する関数
   const startPollingForZip = () => {
     const targetPrefix = `zip/`;
     let attempts = 0;
-    const maxAttempts = 60; // 同期チェックが入るため最大3分間待機枠を設定
+    const maxAttempts = 60;
 
     setStatusMessage('🤖 ①仕分けの全完了を検証中... ②③ZIPパッケージングを待っています...');
 
@@ -158,7 +173,6 @@ export default function Home() {
         const zipFiles = listResponse.Contents?.filter((obj: any) => obj.Key?.endsWith('.zip'));
 
         if (zipFiles && zipFiles.length > 0) {
-          // 最も新しくできた日時名ZIPファイルを選択
           zipFiles.sort((a: any, b: any) => (b.LastModified?.getTime() || 0) - (a.LastModified?.getTime() || 0));
           const latestZip = zipFiles[0];
 
@@ -166,7 +180,6 @@ export default function Home() {
             clearInterval(interval);
             setStatusMessage('✨ すべての仕分け工程とZIP作成が完全に終了しました！');
             
-            // ④ 署名付きURLを発行してフロントから直接安全にダウンロードさせる
             const downloadCommand = new GetObjectCommand({
               Bucket: BUCKET_NAME,
               Key: latestZip.Key,
@@ -189,15 +202,19 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8 text-gray-900">
+    <main className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8 text-gray-900" onDragOver={(e) => e.preventDefault()}>
       <div className="max-w-3xl mx-auto space-y-8">
         <div className="text-center">
           <h1 className="text-3xl font-extrabold text-blue-600 sm:text-4xl">🏐 写真AI自動仕分けシステム</h1>
-          <p className="mt-2 text-sm text-gray-600">写真入りフォルダをドロップするだけで、写真仕分けAIシステムが自動仕分けされたzipを生成します。</p>
+          <p className="mt-2 text-sm text-gray-600">写真入りフォルダを選択するだけで、写真仕分けAIシステムが自動仕分けされたzipを生成します。</p>
         </div>
 
+        {/* ⭕ onDragOverを一本化したhandleDragに変更しました */}
         <div
-          onDragEnter={handleDrag} onDragOver={handleDrag} onDragLeave={handleDrag} onDrop={handleDrop}
+          onDragEnter={handleDrag} 
+          onDragOver={handleDrag} 
+          onDragLeave={handleDrag} 
+          onDrop={handleDrop} 
           onClick={() => fileInputRef.current?.click()}
           className={`mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-dashed rounded-lg transition-colors cursor-pointer ${
             isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 bg-white hover:bg-gray-50'
