@@ -224,7 +224,7 @@ export default function Home() {
             <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
               <path d="M20 8H8a4 4 0 00-4 4v24a4 4 0 004 4h32a4 4 0 004-4V16a4 4 0 00-4-4H24l-4-4z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-            <p className="font-medium text-blue-600">ここにフォルダをドロップ、またはクリックして選択</p>
+            <p className="font-medium text-blue-600">ここクリックして写真入りのフォルダを選択します</p>
             <input
               type="file" ref={fileInputRef} className="hidden" multiple
               {...{ webkitdirectory: "", directory: "" } as any}
